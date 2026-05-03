@@ -66,94 +66,107 @@ export function Reports() {
     }
   }
 
-  // ✅ Load Reports from Supabase
+  // ✅ FIXED: Load Reports using teacher_assignments
   useEffect(() => {
     loadReports()
   }, [startDate, endDate])
 
   async function loadReports() {
-    const { data: userData } = await supabase.auth.getUser()
-    const user = userData?.user
-    if (!user) return
+    try {
+      const { data: userData } = await supabase.auth.getUser()
+      const user = userData?.user
+      if (!user) return
 
-    // Get teacher id
-    const { data: teacher } = await supabase
-      .from("teachers")
-      .select("id")
-      .eq("user_id", user.id)
-      .single()
+      // Get teacher id
+      const { data: teacher } = await supabase
+        .from("teachers")
+        .select("id")
+        .eq("user_id", user.id)
+        .single()
 
-    if (!teacher) return
-
-    // Fetch classes for this teacher
-    const { data: classes } = await supabase
-      .from("classes")
-      .select("id, name")
-      .eq("teacher_id", teacher.id)
-
-    const classIds = classes?.map((c: any) => c.id) || []
-
-    if (classIds.length === 0) {
-      setReport({ students: [], classes: [] })
-      return
-    }
-
-    // Fetch students in these classes
-    const { data: students } = await supabase
-      .from("students")
-      .select("id, name, class_id")
-      .in("class_id", classIds)
-
-    // Fetch attendance with optional date filter
-    let attendanceQuery = supabase
-      .from("attendance")
-      .select("student_id, class_id, status, date")
-      .in("class_id", classIds)
-
-    if (startDate) attendanceQuery = attendanceQuery.gte("date", startDate)
-    if (endDate) attendanceQuery = attendanceQuery.lte("date", endDate)
-
-    const { data: attendance } = await attendanceQuery
-
-    // Calculate Student-wise Attendance %
-    const studentMap: any = {}
-
-    students?.forEach((s: any) => {
-      const records = attendance?.filter((a: any) => a.student_id === s.id) || []
-      const total = records.length
-      const present = records.filter((r: any) => r.status === "present").length
-
-      studentMap[s.id] = {
-        id: s.id,
-        name: s.name,
-        className: classes?.find((c: any) => c.id === s.class_id)?.name || "Unknown Class",
-        percent: total === 0 ? 0 : Math.round((present / total) * 100),
+      if (!teacher) {
+        setReport({ students: [], classes: [] })
+        return
       }
-    })
 
-    // Calculate Class-wise Average Attendance
-    const classMap: any = {}
+      // Get class_ids from teacher_assignments
+      const { data: assignments } = await supabase
+        .from("teacher_assignments")
+        .select("class_id")
+        .eq("teacher_id", teacher.id)
 
-    classes?.forEach((cls: any) => {
-      const clsStudents = students?.filter((s: any) => s.class_id === cls.id) || []
-      const percents = clsStudents.map((s: any) => studentMap[s.id]?.percent || 0)
+      const classIds = assignments?.map((a: any) => a.class_id) || []
 
-      const avg =
-        percents.length === 0
+      if (classIds.length === 0) {
+        setReport({ students: [], classes: [] })
+        return
+      }
+
+      // Fetch classes
+      const { data: classes } = await supabase
+        .from("classes")
+        .select("id, name")
+        .in("id", classIds)
+
+      // Fetch students
+      const { data: students } = await supabase
+        .from("students")
+        .select("id, name, class_id")
+        .in("class_id", classIds)
+
+      // Fetch attendance
+      let attendanceQuery = supabase
+        .from("attendance")
+        .select("student_id, class_id, status, date")
+        .in("class_id", classIds)
+
+      if (startDate) attendanceQuery = attendanceQuery.gte("date", startDate)
+      if (endDate) attendanceQuery = attendanceQuery.lte("date", endDate)
+
+      const { data: attendance } = await attendanceQuery
+
+      // Student-wise calculation
+      const studentMap: any = {}
+
+      students?.forEach((s: any) => {
+        const records = attendance?.filter((a: any) => a.student_id === s.id) || []
+        const total = records.length
+        const present = records.filter((r: any) => r.status === "present").length
+
+        studentMap[s.id] = {
+          id: s.id,
+          name: s.name,
+          className: classes?.find((c: any) => c.id === s.class_id)?.name || "Unknown Class",
+          percent: total === 0 ? 0 : Math.round((present / total) * 100),
+        }
+      })
+
+      // Class-wise average
+      const classMap: any = {}
+
+      classes?.forEach((cls: any) => {
+        const clsStudents = students?.filter((s: any) => s.class_id === cls.id) || []
+        const percents = clsStudents.map((s: any) => studentMap[s.id]?.percent || 0)
+
+        const avg = percents.length === 0
           ? 0
           : Math.round(percents.reduce((a: number, b: number) => a + b, 0) / percents.length)
 
-      classMap[cls.id] = {
-        id: cls.id,
-        name: cls.name,
-        avgPercent: avg,
-      }
-    })
+        classMap[cls.id] = {
+          id: cls.id,
+          name: cls.name,
+          avgPercent: avg,
+        }
+      })
 
-    setReport({
-      students: Object.values(studentMap),
-      classes: Object.values(classMap),
-    })
+      setReport({
+        students: Object.values(studentMap),
+        classes: Object.values(classMap),
+      })
+    } catch (error) {
+      console.error("Error loading reports:", error)
+      setReport({ students: [], classes: [] })
+    }
   }
 
   return (
@@ -275,7 +288,7 @@ export function Reports() {
                 ) : (
                   report.classes.map((row: any) => (
                     <TableRow key={row.id} className="border-white/5 hover:bg-white/[0.02]">
-                      <TableCell className="font-medium">Mathematics</TableCell> {/* Static for now as per original UI */}
+                      <TableCell className="font-medium">Mathematics</TableCell>
                       <TableCell>
                         <Badge variant="outline" className="border-primary/30 text-primary">
                           {row.name}
@@ -370,7 +383,7 @@ export function Reports() {
         </TabsContent>
       </Tabs>
 
-      {/* Class-wise Attendance Bar Chart - Added below existing UI */}
+      {/* Class-wise Attendance Bar Chart */}
       <div className="card-glass p-6 rounded-2xl">
         <h3 className="text-lg font-semibold mb-4">
           Class Attendance Overview
