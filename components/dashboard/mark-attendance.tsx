@@ -45,77 +45,143 @@ export function MarkAttendance() {
   const [selectedSubject, setSelectedSubject] = useState("")
   const [students, setStudents] = useState<Student[]>([])
   const [isLoaded, setIsLoaded] = useState(false)
-  const [classes, setClasses] = useState<any[]>([])   // ✅ Added for dynamic classes
+  const [classes, setClasses] = useState<any[]>([])
+  const [subjects, setSubjects] = useState<any[]>([])
 
   const presentCount = students.filter((s) => s.status === "present").length
   const absentCount = students.filter((s) => s.status === "absent").length
   const totalMarked = presentCount + absentCount
   const attendancePercentage = totalMarked > 0 ? Math.round((presentCount / totalMarked) * 100) : 0
 
-  // ✅ Load Classes for logged-in teacher (FIXED)
+  // Load classes and subjects for logged-in teacher
   useEffect(() => {
-    loadClasses()
+    loadTeacherData()
   }, [])
 
-  async function loadClasses() {
-    const { data: userData } = await supabase.auth.getUser()
-    const user = userData?.user
-    if (!user) return
+  async function loadTeacherData() {
+    try {
+      const { data: userData } = await supabase.auth.getUser()
+      const user = userData?.user
+      if (!user) return
 
-    const { data: teacher } = await supabase
-      .from("teachers")
-      .select("id")
-      .eq("user_id", user.id)
-      .single()
+      const { data: teacher } = await supabase
+        .from("teachers")
+        .select("id")
+        .eq("user_id", user.id)
+        .single()
 
-    if (!teacher) return
+      if (!teacher) return
 
-    const { data, error } = await supabase
-      .from("class_subjects")
-      .select("class_id, classes(name)")
-      .eq("teacher_id", teacher.id)
+      // Fetch unique classes via teacher_assignments
+      const { data: assignments, error } = await supabase
+        .from("teacher_assignments")
+        .select("class_id, classes(name)")
+        .eq("teacher_id", teacher.id)
 
-    if (error) {
-      console.log(error)
-      return
+      if (error) {
+        console.error("Error fetching classes:", error)
+        return
+      }
+
+      const uniqueClasses = Array.from(
+        new Map(
+          assignments?.map((item: any) => [
+            item.class_id,
+            { id: item.class_id, name: item.classes?.name || "Unknown" },
+          ]) || []
+        ).values()
+      )
+
+      setClasses(uniqueClasses)
+    } catch (err) {
+      console.error("Error in loadTeacherData:", err)
     }
-
-    // Remove duplicate classes using Map
-    const uniqueClasses = Array.from(
-      new Map(
-        data.map((item: any) => [
-          item.class_id,
-          { id: item.class_id, name: item.classes.name },
-        ])
-      ).values()
-    )
-
-    setClasses(uniqueClasses)
   }
 
-  // ✅ Updated: Load Students using class_id
+  // Load subjects when class is selected
+  useEffect(() => {
+    if (!selectedClass) {
+      setSubjects([])
+      setSelectedSubject("")
+      return
+    }
+    loadSubjectsForClass()
+  }, [selectedClass])
+
+  async function loadSubjectsForClass() {
+    try {
+      const { data: userData } = await supabase.auth.getUser()
+      const user = userData?.user
+      if (!user) return
+
+      const { data: teacher } = await supabase
+        .from("teachers")
+        .select("id")
+        .eq("user_id", user.id)
+        .single()
+
+      if (!teacher) return
+
+      const { data, error } = await supabase
+        .from("teacher_assignments")
+        .select("subject")
+        .eq("teacher_id", teacher.id)
+        .eq("class_id", selectedClass)
+
+      if (error) {
+        console.error("Error fetching subjects:", error)
+        return
+      }
+
+      // Get unique subjects
+      const uniqueSubjects = Array.from(
+        new Set(data?.map((item: any) => item.subject) || [])
+      ).map((sub) => ({ value: sub, label: sub }))
+
+      setSubjects(uniqueSubjects)
+      
+      // Auto-select first subject if available
+      if (uniqueSubjects.length > 0 && !selectedSubject) {
+        setSelectedSubject(uniqueSubjects[0].value)
+      }
+    } catch (err) {
+      console.error("Error loading subjects:", err)
+    }
+  }
+
+  // Load students for selected class
   const handleLoadStudents = async () => {
-    if (!selectedClass) return
-
-    const { data, error } = await supabase
-      .from("students")
-      .select("*")
-      .eq("class_id", selectedClass)
-
-    if (error) {
-      alert("Error loading students ❌")
+    if (!selectedClass) {
+      alert("Please select a class")
       return
     }
 
-    const formatted = data.map((s: any) => ({
-      id: s.id,
-      rollNo: "N/A",
-      name: s.name,
-      status: null,
-    }))
+    try {
+      const { data, error } = await supabase
+        .from("students")
+        .select("*")
+        .eq("class_id", selectedClass)
+        .order("name")
 
-    setStudents(formatted)
-    setIsLoaded(true)
+      if (error) {
+        alert("Error loading students ❌")
+        console.error(error)
+        return
+      }
+
+      const formatted = data?.map((s: any) => ({
+        id: s.id,
+        rollNo: "N/A",
+        name: s.name,
+        status: null,
+      })) || []
+
+      setStudents(formatted)
+      setIsLoaded(true)
+    } catch (err) {
+      alert("Failed to load students")
+      console.error(err)
+    }
   }
 
   const handleStatusChange = (studentId: string, status: "present" | "absent") => {
@@ -128,45 +194,49 @@ export function MarkAttendance() {
     setStudents((prev) => prev.map((s) => ({ ...s, status })))
   }
 
-  // ✅ Updated Save Logic with class_id and proper upsert behavior
   const handleSave = async () => {
-    for (let student of students) {
-      if (!student.status) continue
+    if (students.length === 0) return
 
-      const today = selectedDate
+    try {
+      for (let student of students) {
+        if (!student.status) continue
 
-      // Check if record already exists
-      const { data } = await supabase
-        .from("attendance")
-        .select("*")
-        .eq("student_id", student.id)
-        .eq("date", today)
-        .single()
+        const today = selectedDate
 
-      if (data) {
-        // UPDATE existing record
-        await supabase
+        // Check if record exists
+        const { data: existing } = await supabase
           .from("attendance")
-          .update({ 
-            status: student.status,
-            class_id: selectedClass
-          })
+          .select("*")
           .eq("student_id", student.id)
           .eq("date", today)
-      } else {
-        // INSERT new record
-        await supabase.from("attendance").insert([
-          {
-            student_id: student.id,
-            class_id: selectedClass,
-            status: student.status,
-            date: today,
-          },
-        ])
-      }
-    }
+          .single()
 
-    alert("Attendance Saved ✅")
+        if (existing) {
+          await supabase
+            .from("attendance")
+            .update({ 
+              status: student.status,
+              class_id: selectedClass 
+            })
+            .eq("student_id", student.id)
+            .eq("date", today)
+        } else {
+          await supabase.from("attendance").insert([
+            {
+              student_id: student.id,
+              class_id: selectedClass,
+              status: student.status,
+              date: today,
+            },
+          ])
+        }
+      }
+
+      alert("Attendance Saved ✅")
+    } catch (err) {
+      alert("Error saving attendance")
+      console.error(err)
+    }
   }
 
   return (
@@ -196,7 +266,7 @@ export function MarkAttendance() {
               </div>
             </div>
 
-            {/* Class Dropdown - Now Dynamic */}
+            {/* Class Dropdown */}
             <div className="space-y-2">
               <label className="text-sm font-medium text-muted-foreground">
                 Select Class
@@ -215,7 +285,7 @@ export function MarkAttendance() {
               </Select>
             </div>
 
-            {/* Subject Dropdown (kept as is - not changed per instructions) */}
+            {/* Dynamic Subject Dropdown */}
             <div className="space-y-2">
               <label className="text-sm font-medium text-muted-foreground">
                 Select Subject
@@ -225,11 +295,21 @@ export function MarkAttendance() {
                   <SelectValue placeholder="Choose subject" />
                 </SelectTrigger>
                 <SelectContent className="glass border-white/10">
-                  <SelectItem value="physics">Physics</SelectItem>
-                  <SelectItem value="chemistry">Chemistry</SelectItem>
-                  <SelectItem value="mathematics">Mathematics</SelectItem>
-                  <SelectItem value="biology">Biology</SelectItem>
-                  <SelectItem value="english">English</SelectItem>
+                  {subjects.length > 0 ? (
+                    subjects.map((sub) => (
+                      <SelectItem key={sub.value} value={sub.value}>
+                        {sub.label}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <>
+                      <SelectItem value="physics">Physics</SelectItem>
+                      <SelectItem value="chemistry">Chemistry</SelectItem>
+                      <SelectItem value="mathematics">Mathematics</SelectItem>
+                      <SelectItem value="biology">Biology</SelectItem>
+                      <SelectItem value="english">English</SelectItem>
+                    </>
+                  )}
                 </SelectContent>
               </Select>
             </div>

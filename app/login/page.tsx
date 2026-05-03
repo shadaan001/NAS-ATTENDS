@@ -28,38 +28,31 @@ export default function LoginPage() {
       return
     }
 
-    const userRole = data.user?.user_metadata?.role
+    const user = data.user
 
-    if (userRole === "admin") {
-      router.push("/admin")
-    } else if (userRole === "teacher") {
-      router.push("/")
-    } else if (userRole === "student") {
-      router.push("/student")
-    } else {
+    // 🔥 GET ROLE FROM PROFILES TABLE (FIXED)
+    const { data: profile, error: roleError } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle()
+
+    if (!profile || !profile.role) {
       alert("No role assigned ❌")
-    }
-
-    setLoading(false)
-  }
-
-  // 🔥 FIX METADATA FUNCTION (kept exactly as you had)
-  async function fixMetadata() {
-    const { data: { user } } = await supabase.auth.getUser()
-
-    if (!user) {
-      alert("Login first ❌")
+      setLoading(false)
       return
     }
 
-    await supabase.auth.updateUser({
-      data: {
-        role: role,
-        student_id: user.id
-      }
-    })
+    // 🔥 REDIRECT BASED ON ROLE
+    if (profile.role === "admin") {
+      router.push("/admin")
+    } else if (profile.role === "teacher") {
+      router.push("/dashboard")
+    } else if (profile.role === "student") {
+      router.push("/student")
+    }
 
-    alert("Metadata updated ✅")
+    setLoading(false)
   }
 
   return (
@@ -85,7 +78,7 @@ export default function LoginPage() {
             </p>
           </div>
 
-          {/* Role Selector - Segmented Control */}
+          {/* Role Selector (UI SAME) */}
           <div className="bg-white/5 border border-white/10 rounded-2xl p-1 mb-8">
             <div className="flex">
               {["student", "teacher", "admin"].map((r) => (
@@ -106,7 +99,7 @@ export default function LoginPage() {
 
           {/* Form */}
           <div className="space-y-6">
-            {/* Email Field */}
+            {/* Email */}
             <div>
               <div className="relative">
                 <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
@@ -117,12 +110,12 @@ export default function LoginPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@example.com"
-                  className="w-full bg-white/5 border border-white/10 focus:border-blue-500 rounded-2xl pl-12 pr-5 py-4 text-white placeholder:text-gray-500 outline-none transition-all focus:ring-1 focus:ring-blue-500/30"
+                  className="w-full bg-white/5 border border-white/10 focus:border-blue-500 rounded-2xl pl-12 pr-5 py-4 text-white placeholder:text-gray-500 outline-none"
                 />
               </div>
             </div>
 
-            {/* Password Field */}
+            {/* Password */}
             <div>
               <div className="relative">
                 <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
@@ -133,75 +126,27 @@ export default function LoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full bg-white/5 border border-white/10 focus:border-blue-500 rounded-2xl pl-12 pr-14 py-4 text-white placeholder:text-gray-500 outline-none transition-all focus:ring-1 focus:ring-blue-500/30"
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl pl-12 pr-14 py-4 text-white"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition"
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400"
                 >
-                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  {showPassword ? <EyeOff /> : <Eye />}
                 </button>
               </div>
-            </div>
-
-            {/* Forgot Password */}
-            <div className="text-right">
-              <a href="#" className="text-sm text-blue-400 hover:text-blue-300 transition">
-                Forgot password?
-              </a>
             </div>
 
             {/* Login Button */}
             <button
               onClick={handleLogin}
               disabled={loading || !email || !password}
-              className="w-full py-4 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:via-indigo-500 hover:to-purple-500 font-semibold text-lg shadow-xl shadow-purple-500/30 transition-all active:scale-[0.985] disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+              className="w-full py-4 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white"
             >
-              {loading ? (
-                <>
-                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Logging in...
-                </>
-              ) : (
-                `Login as ${role.charAt(0).toUpperCase() + role.slice(1)}`
-              )}
-            </button>
-
-            {/* Divider */}
-            <div className="relative my-6">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-white/10"></div>
-              </div>
-              <div className="relative flex justify-center text-xs uppercase tracking-widest text-gray-500">
-                <span className="bg-[#020617] px-4">or</span>
-              </div>
-            </div>
-
-            {/* Google Login Button (UI Only) */}
-            <button className="w-full py-4 border border-white/10 hover:border-white/20 rounded-2xl flex items-center justify-center gap-3 text-sm font-medium transition hover:bg-white/5">
-              <img src="https://www.google.com/favicon.ico" alt="Google" className="w-5 h-5" />
-              Continue with Google
-            </button>
-
-            {/* Fix Metadata Button (kept for your convenience) */}
-            <button
-              onClick={fixMetadata}
-              className="w-full py-3 mt-2 text-xs text-yellow-400 hover:text-yellow-300 border border-yellow-400/30 hover:border-yellow-400/50 rounded-2xl transition"
-            >
-              Fix Role Metadata (Dev Tool)
+              {loading ? "Logging in..." : `Login as ${role}`}
             </button>
           </div>
-        </div>
-
-        {/* Footer */}
-        <div className="text-center mt-8">
-          <p className="text-xs text-gray-500">
-            NAS Attendance System © {new Date().getFullYear()}
-          </p>
-          <p className="text-[10px] text-gray-600 mt-1">
-            Secure • Simple • Smart
-          </p>
         </div>
       </div>
     </div>
