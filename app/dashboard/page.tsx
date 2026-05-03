@@ -48,7 +48,6 @@ function TeacherDashboard() {
 
       if (!teacher) return
 
-      // Fixed: Use teacher_assignments
       const { data: assignments } = await supabase
         .from("teacher_assignments")
         .select("class_id")
@@ -69,7 +68,7 @@ function TeacherDashboard() {
       setStats({
         students: studentCount || 0,
         classes: classCount || 0,
-        subjects: 5, // placeholder
+        subjects: 5,
       })
     } catch (e) {
       console.error(e)
@@ -107,7 +106,7 @@ function TeacherDashboard() {
         </div>
       </div>
 
-      {/* Stats Grid - Responsive */}
+      {/* Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatsCard
           title="Total Classes"
@@ -142,7 +141,7 @@ function TeacherDashboard() {
         />
       </div>
 
-      {/* Main Grid - Responsive */}
+      {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1">
           <CalendarWidget
@@ -162,9 +161,10 @@ function TeacherDashboard() {
   )
 }
 
-// 🔥 MAIN DASHBOARD WRAPPER - FIXED RESPONSIVE
+// 🔥 MAIN DASHBOARD - WITH MOBILE SIDEBAR SUPPORT
 export default function Dashboard() {
   const [activeItem, setActiveItem] = useState("Dashboard")
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   const getPageTitle = () => {
     switch (activeItem) {
@@ -196,11 +196,20 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Sidebar activeItem={activeItem} onNavigate={setActiveItem} />
+      {/* Sidebar - Mobile + Desktop */}
+      <Sidebar 
+        activeItem={activeItem} 
+        onNavigate={setActiveItem}
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+      />
 
-      {/* Main Content - FIXED MOBILE */}
+      {/* Main Content Area */}
       <div className="lg:ml-[260px] transition-all duration-300">
-        <Header title={getPageTitle()} />
+        <Header 
+          title={getPageTitle()} 
+          onMenuClick={() => setSidebarOpen(true)}
+        />
 
         <main className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
           {renderContent()}

@@ -1,8 +1,9 @@
 "use client"
+
 import { useEffect, useState } from "react"
 import { supabase } from "@/lib/supabase"
 import { logoutUser } from "@/lib/logout"
-import { Bell, Search, Moon } from "lucide-react"
+import { Bell, Search, Moon, Menu } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -19,29 +20,41 @@ import { cn } from "@/lib/utils"
 
 interface HeaderProps {
   title: string
+  onMenuClick?: () => void   // ← Added for mobile menu
 }
 
-export function Header({ title }: HeaderProps) {
+export function Header({ title, onMenuClick }: HeaderProps) {
   const [user, setUser] = useState<any>(null)
 
-useEffect(() => {
-  getUser()
-}, [])
+  useEffect(() => {
+    getUser()
+  }, [])
 
-async function getUser() {
-  const { data } = await supabase.auth.getUser()
-  setUser(data.user)
-}
+  async function getUser() {
+    const { data } = await supabase.auth.getUser()
+    setUser(data.user)
+  }
+
   return (
     <header
       className={cn(
         "sticky top-0 z-30 h-16",
         "glass border-b border-white/5",
-        "flex items-center justify-between px-6 gap-4"
+        "flex items-center justify-between px-4 lg:px-6 gap-4"
       )}
     >
-      {/* Left Section */}
+      {/* Left Section - Title + Mobile Menu Button */}
       <div className="flex items-center gap-4">
+        {/* Mobile Hamburger Button */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="lg:hidden h-9 w-9"
+          onClick={onMenuClick}
+        >
+          <Menu className="h-5 w-5" />
+        </Button>
+
         <h1 className="text-xl font-semibold text-foreground tracking-tight">
           {title}
         </h1>
@@ -127,13 +140,13 @@ async function getUser() {
               <Avatar className="h-8 w-8 border border-primary/20">
                 <AvatarImage src="https://api.dicebear.com/7.x/avataaars/svg?seed=teacher" />
                 <AvatarFallback className="bg-primary/20 text-primary text-xs">
-  {user?.email?.[0]?.toUpperCase() || "U"}
-</AvatarFallback>
+                  {user?.email?.[0]?.toUpperCase() || "U"}
+                </AvatarFallback>
               </Avatar>
               <div className="hidden md:flex flex-col items-start">
                 <span className="text-sm font-medium">
-  {user?.email || "Loading..."}
-</span>
+                  {user?.email || "Loading..."}
+                </span>
                 <span className="text-[10px] text-muted-foreground">Teacher</span>
               </div>
             </Button>
@@ -149,11 +162,11 @@ async function getUser() {
             <DropdownMenuItem>Help & Support</DropdownMenuItem>
             <DropdownMenuSeparator className="bg-white/5" />
             <DropdownMenuItem
-  onClick={logoutUser}
-  className="text-destructive cursor-pointer"
->
-  Sign Out
-</DropdownMenuItem>
+              onClick={logoutUser}
+              className="text-destructive cursor-pointer"
+            >
+              Sign Out
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
